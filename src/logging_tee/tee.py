@@ -233,7 +233,7 @@ def install_tqdm_logging(logger, interval_seconds=0.5, level=logging.INFO):
 
 def setup_logger(
     log_file,
-    name=__name__,
+    name=None,
     level=logging.INFO,
     capture_print=True,
     capture_uncaught_exceptions=True,

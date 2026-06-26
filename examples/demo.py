@@ -5,7 +5,7 @@ import time
 from logging_tee import setup_logger
 
 if __name__ == "__main__":
-    setup_logger(log_file="output.log", level=logging.DEBUG)
+    setup_logger(name=__name__, log_file="output.log", level=logging.DEBUG)
     logger = logging.getLogger(__name__)
 
     for i in tqdm(
