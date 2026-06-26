@@ -50,6 +50,8 @@ if __name__ == "__main__":
 
 # Contributing
 
+Increase `version` in [pyproject.toml](pyproject.toml) file.
+
 Build the package
 
 ```bash
