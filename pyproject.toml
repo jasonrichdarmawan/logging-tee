@@ -4,11 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "logging-tee"
-version = "1.0.1"
+authors = [
+    { name = "Jason Rich Darmawan" },
+]
+version = "1.0.2"
 description = "Logging utilities that work well with tqdm"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = ["tqdm"]
+
+[project.urls]
+Source = "https://github.com/jasonrichdarmawan/logging-tee"
 
 [tool.setuptools.packages.find]
 where = ["src"]
