@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "logging-tee"
+version = "1.0.0"
+description = "Logging utilities that work well with tqdm"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["tqdm"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
