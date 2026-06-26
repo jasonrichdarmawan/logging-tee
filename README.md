@@ -50,9 +50,24 @@ if __name__ == "__main__":
 
 # Contributing
 
+Build the package
+
 ```bash
 python -m pip install build
 python -m build
 python install dist/*.whl
 python -c "import logging_tee; print(logging_tee)"
+```
+
+Upload to TestPyPI first
+
+```bash
+python -m pip install twine
+python -m twine upload --repository testpypi dist/*
+```
+
+Upload to PyPi
+
+```bash
+python -m twine upload dist/*
 ```
