@@ -15,7 +15,7 @@ from logging_tee import setup_logger
 
 if __name__ == "__main__":
     setup_logger(log_file="output.log", level=logging.DEBUG)
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger()
 
     for i in tqdm(
         range(2),
