@@ -7,7 +7,7 @@ name = "logging-tee"
 authors = [
     { name = "Jason Rich Darmawan" },
 ]
-version = "1.0.5"
+version = "1.0.6"
 description = "Logging utilities that work well with tqdm"
 readme = "README.md"
 requires-python = ">=3.9"

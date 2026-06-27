@@ -4,6 +4,8 @@ import time
 
 from logging_tee import setup_logger
 
+from .otherfile import do_something_with_progress, cause_exception
+
 if __name__ == "__main__":
     setup_logger(log_file="output.log", level=logging.DEBUG)
     logger = logging.getLogger()
@@ -37,5 +39,8 @@ if __name__ == "__main__":
     logger.debug("Multiple lines:\n%s", "next line\nnext line 2")
     logger.warning("Warning message\nwith multiple lines\nand should be logged properly.")
     logger.error("Error message\nwith multiple lines\nand should be logged properly.")
+    
     logger2.info("Logger2 info message\nwith multiple lines\nand should be logged properly.")
-    raise ValueError("This is an error message\nwith multiple lines\nand should be logged properly.")
+    
+    do_something_with_progress()
+    cause_exception()

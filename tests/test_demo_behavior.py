@@ -3,6 +3,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from logging_tee import setup_logger
+from examples.otherfile import do_something_with_progress
 
 
 def _read_text(path: Path) -> str:
@@ -110,3 +111,27 @@ def test_demo_style_tqdm_progress_is_logged(tmp_path):
     logger.info("done with tqdm")
     contents = _read_text(log_path)
     assert "done with tqdm" in contents
+
+
+def test_demo_style_tqdm_uses_calling_module_logger(tmp_path):
+    """
+    tqdm snapshot logs should be attributed to the module that created the bar,
+    not always the root logger.
+    """
+    log_path = tmp_path / "output.log"
+
+    setup_logger(
+        log_file=str(log_path),
+        level=logging.DEBUG,
+        capture_print=False,
+        capture_uncaught_exceptions=False,
+        auto_log_tqdm=True,
+        tqdm_log_interval_seconds=0,
+    )
+
+    do_something_with_progress()
+
+    contents = _read_text(log_path)
+    assert "examples.otherfile INFO      Processing item 0" in contents
+    assert "examples.otherfile INFO      Processing item 1" in contents
+    assert "examples.otherfile INFO      tqdm[Processing items] done:" in contents

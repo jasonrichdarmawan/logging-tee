@@ -5,6 +5,7 @@ import os
 import sys
 import time
 import copy
+import inspect
 import tqdm.std as tqdm_std
 import tqdm.auto as tqdm_auto
 from tqdm.auto import tqdm
@@ -173,6 +174,21 @@ def _log_tqdm_snapshot(logger, pbar, level=logging.INFO, event="progress"):
     )
 
 
+def _infer_tqdm_logger(default_logger):
+    current_frame = inspect.currentframe()
+    try:
+        frame = current_frame.f_back if current_frame is not None else None
+        while frame is not None:
+            module_name = frame.f_globals.get("__name__")
+            if module_name and not module_name.startswith("logging_tee") and not module_name.startswith("tqdm"):
+                return logging.getLogger(module_name)
+            frame = frame.f_back
+    finally:
+        del current_frame
+
+    return default_logger
+
+
 def install_tqdm_logging(logger, interval_seconds=0.5, level=logging.INFO):
     cls = tqdm_std.tqdm
 
@@ -197,6 +213,9 @@ def install_tqdm_logging(logger, interval_seconds=0.5, level=logging.INFO):
                 if active_positions:
                     kwargs["position"] = max(active_positions) + 1
 
+            default_logger = getattr(cls, "_auto_log_logger", None)
+            self._auto_log_logger = _infer_tqdm_logger(default_logger)
+
             cls._auto_log_original_init(self, *args, **kwargs)
             self._auto_log_last_snapshot = time.monotonic()
 
@@ -206,7 +225,7 @@ def install_tqdm_logging(logger, interval_seconds=0.5, level=logging.INFO):
             if self.disable:
                 return result
 
-            logger_obj = getattr(cls, "_auto_log_logger", None)
+            logger_obj = getattr(self, "_auto_log_logger", getattr(cls, "_auto_log_logger", None))
             interval = getattr(cls, "_auto_log_interval", 0.5)
             log_level = getattr(cls, "_auto_log_level", logging.INFO)
 
@@ -224,7 +243,7 @@ def install_tqdm_logging(logger, interval_seconds=0.5, level=logging.INFO):
 
         def _patched_close(self):
             try:
-                logger_obj = getattr(cls, "_auto_log_logger", None)
+                logger_obj = getattr(self, "_auto_log_logger", getattr(cls, "_auto_log_logger", None))
                 log_level = getattr(cls, "_auto_log_level", logging.INFO)
                 if logger_obj is not None:
                     _log_tqdm_snapshot(logger=logger_obj, pbar=self, level=log_level, event="done")
