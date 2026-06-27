@@ -162,3 +162,30 @@ def test_tqdm_snapshot_clamps_overshoot_to_total(tmp_path):
     assert "tqdm[Overall Progress]" in contents
     assert "17/17 (100.0%)" in contents
     assert "32/17" not in contents
+
+
+def test_tqdm_snapshot_includes_postfix(tmp_path):
+    """
+    Postfix values set on a tqdm bar should be preserved in the logged snapshot.
+    """
+    log_path = tmp_path / "output.log"
+
+    setup_logger(
+        log_file=str(log_path),
+        level=logging.DEBUG,
+        capture_print=False,
+        capture_uncaught_exceptions=False,
+        auto_log_tqdm=True,
+        tqdm_log_interval_seconds=0,
+    )
+
+    additional_info = 2
+    pbar = tqdm(range(3), total=3, desc="Outer Progress")
+    for _ in pbar:
+        additional_info *= 2
+        pbar.set_postfix({"additional_info": f"{additional_info}"})
+
+    contents = _read_text(log_path)
+    assert "tqdm[Outer Progress]" in contents
+    assert "additional_info" in contents
+    assert "8" in contents or "16" in contents

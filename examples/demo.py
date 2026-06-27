@@ -18,6 +18,15 @@ if __name__ == "__main__":
         time.sleep(0.1)
         pbar.update(batch_size)
     pbar.close()
+    
+    additional_info = 2
+    pbar = tqdm(range(3), total=3, desc="Outer Progress")
+    for i in pbar:
+        additional_info *= 2
+        pbar.set_postfix({
+            "additional_info": f"{additional_info}",
+            "more_info": f"{additional_info * 2}",
+        })
 
     for i in tqdm(
         range(2),

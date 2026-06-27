@@ -159,11 +159,13 @@ def _log_tqdm_snapshot(logger, pbar, level=logging.INFO, event="progress"):
     remaining = (remaining_units / rate) if (remaining_units is not None and rate > 0) else float("inf")
     remaining_text = "unknown" if remaining == float("inf") else f"{remaining:.1f}s"
     elapsed_text = f"{elapsed:.1f}s"
+    postfix = getattr(pbar, "postfix", None)
+    postfix_text = f", {postfix}" if postfix else ""
 
     desc = (getattr(pbar, "desc", "") or "tqdm").strip() or "tqdm"
     logger.log(
         level,
-        "tqdm[%s] %s: %d/%d (%.1f%%), elapsed %s, %.2f it/s, ETA %s",
+        "tqdm[%s] %s: %d/%d (%.1f%%), elapsed %s, %.2f it/s, ETA %s%s",
         desc,
         event,
         n,
@@ -172,6 +174,7 @@ def _log_tqdm_snapshot(logger, pbar, level=logging.INFO, event="progress"):
         elapsed_text,
         rate,
         remaining_text,
+        postfix_text,
     )
 
 

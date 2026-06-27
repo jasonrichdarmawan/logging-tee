@@ -41,17 +41,10 @@ pip install logging-tee
 # Usage
 
 ```python
-import logging
-from tqdm import tqdm
-import time
-
-from logging_tee import setup_logger
-
-if __name__ == "__main__":
     setup_logger(log_file="output.log", level=logging.DEBUG)
     logger = logging.getLogger()
     logger2 = logging.getLogger("test_logger2")
-
+    
     total = 17
     batch_size = 16
     pbar = tqdm(total=total, desc="Overall Progress")
@@ -59,6 +52,15 @@ if __name__ == "__main__":
         time.sleep(0.1)
         pbar.update(batch_size)
     pbar.close()
+    
+    additional_info = 2
+    pbar = tqdm(range(3), total=3, desc="Outer Progress")
+    for i in pbar:
+        additional_info *= 2
+        pbar.set_postfix({
+            "additional_info": f"{additional_info}",
+            "more_info": f"{additional_info * 2}",
+        })
 
     for i in tqdm(
         range(2),
@@ -88,60 +90,64 @@ if __name__ == "__main__":
     logger.debug("Multiple lines:\n%s", "next line\nnext line 2")
     logger.warning("Warning message\nwith multiple lines\nand should be logged properly.")
     logger.error("Error message\nwith multiple lines\nand should be logged properly.")
+    
     logger2.info("Logger2 info message\nwith multiple lines\nand should be logged properly.")
-    raise ValueError("This is an error message\nwith multiple lines\nand should be logged properly.")
+    
+    do_something_with_progress()
+    cause_exception()
 ```
 
 output.log
 ```bash
-2026-06-27 17:42:40,269 __main__ INFO      tqdm[Overall Progress] progress: 17/17 (100.0%), elapsed 0.2s, 159.40 it/s, ETA 0.0s
-2026-06-27 17:42:40,269 __main__ INFO      tqdm[Overall Progress] done: 17/17 (100.0%), elapsed 0.2s, 159.40 it/s, ETA 0.0s
-2026-06-27 17:42:40,300 root INFO      Processing item 0
-2026-06-27 17:42:40,331 root INFO      Processing item 1
-2026-06-27 17:42:40,331 __main__ INFO      tqdm[Processing] done: 2/2 (100.0%), elapsed 0.1s, 32.71 it/s, ETA 0.0s
-2026-06-27 17:42:40,351 root INFO      Nested step outer=0 inner=0
-2026-06-27 17:42:40,392 __main__ INFO      tqdm[Inner 0] done: 3/3 (100.0%), elapsed 0.1s, 49.43 it/s, ETA 0.0s
-2026-06-27 17:42:40,394 root INFO      Completed outer=0
-2026-06-27 17:42:40,416 root INFO      Nested step outer=1 inner=0
-2026-06-27 17:42:40,457 __main__ INFO      tqdm[Inner 1] done: 3/3 (100.0%), elapsed 0.1s, 49.17 it/s, ETA 0.0s
-2026-06-27 17:42:40,457 root INFO      Completed outer=1
-2026-06-27 17:42:40,458 __main__ INFO      tqdm[Outer] progress: 2/2 (100.0%), elapsed 0.1s, 15.78 it/s, ETA 0.0s
-2026-06-27 17:42:40,459 __main__ INFO      tqdm[Outer] done: 2/2 (100.0%), elapsed 0.1s, 15.78 it/s, ETA 0.0s
-2026-06-27 17:42:40,461 root INFO      from print statement
-2026-06-27 17:42:40,461 root INFO      multiple lines
-2026-06-27 17:42:40,461 root INFO      from print statement 2
-2026-06-27 17:42:40,462 root DEBUG     Single line
-2026-06-27 17:42:40,462 root DEBUG     Multiple lines:
-2026-06-27 17:42:40,462 root DEBUG     next line
-2026-06-27 17:42:40,463 root DEBUG     Another single line
-2026-06-27 17:42:40,463 root DEBUG     Multiple lines:
-2026-06-27 17:42:40,463 root DEBUG     next line
-2026-06-27 17:42:40,463 root DEBUG     next line 2
-2026-06-27 17:42:40,463 root WARNING   Warning message
-2026-06-27 17:42:40,463 root WARNING   with multiple lines
-2026-06-27 17:42:40,463 root WARNING   and should be logged properly.
-2026-06-27 17:42:40,463 root ERROR     Error message
-2026-06-27 17:42:40,463 root ERROR     with multiple lines
-2026-06-27 17:42:40,463 root ERROR     and should be logged properly.
-2026-06-27 17:42:40,463 test_logger2 INFO      Logger2 info message
-2026-06-27 17:42:40,463 test_logger2 INFO      with multiple lines
-2026-06-27 17:42:40,463 test_logger2 INFO      and should be logged properly.
-2026-06-27 17:42:40,494 examples.otherfile INFO      Processing item 0
-2026-06-27 17:42:40,524 examples.otherfile INFO      Processing item 1
-2026-06-27 17:42:40,524 examples.otherfile INFO      tqdm[Processing items] done: 2/2 (100.0%), elapsed 0.1s, 32.81 it/s, ETA 0.0s
-2026-06-27 17:42:40,525 root ERROR     Uncaught exception
-2026-06-27 17:42:40,525 root ERROR     Traceback (most recent call last):
-2026-06-27 17:42:40,525 root ERROR       File "/home/npu-tao/micromamba/envs/hipporag/lib/python3.10/runpy.py", line 196, in _run_module_as_main
-2026-06-27 17:42:40,525 root ERROR         return _run_code(code, main_globals, None,
-2026-06-27 17:42:40,525 root ERROR       File "/home/npu-tao/micromamba/envs/hipporag/lib/python3.10/runpy.py", line 86, in _run_code
-2026-06-27 17:42:40,525 root ERROR         exec(code, run_globals)
-2026-06-27 17:42:40,525 root ERROR       File "/media/npu-tao/disk4T/jason/logging-tee/examples/demo.py", line 54, in <module>
-2026-06-27 17:42:40,525 root ERROR         cause_exception()
-2026-06-27 17:42:40,525 root ERROR       File "/media/npu-tao/disk4T/jason/logging-tee/examples/otherfile.py", line 13, in cause_exception
-2026-06-27 17:42:40,525 root ERROR         raise ValueError("This is an error message\nwith multiple lines\nand should be logged properly.")
-2026-06-27 17:42:40,525 root ERROR     ValueError: This is an error message
-2026-06-27 17:42:40,525 root ERROR     with multiple lines
-2026-06-27 17:42:40,525 root ERROR     and should be logged properly.
+2026-06-27 18:34:08,983 __main__ INFO      tqdm[Overall Progress] progress: 17/17 (100.0%), elapsed 0.2s, 159.55 it/s, ETA 0.0s
+2026-06-27 18:34:08,984 __main__ INFO      tqdm[Overall Progress] done: 17/17 (100.0%), elapsed 0.2s, 159.55 it/s, ETA 0.0s
+2026-06-27 18:34:08,986 __main__ INFO      tqdm[Outer Progress] done: 3/3 (100.0%), elapsed 0.0s, 3504.01 it/s, ETA 0.0s, postfix additional_info=16, more_info=32
+2026-06-27 18:34:09,017 root INFO      Processing item 0
+2026-06-27 18:34:09,048 root INFO      Processing item 1
+2026-06-27 18:34:09,048 __main__ INFO      tqdm[Processing] done: 2/2 (100.0%), elapsed 0.1s, 32.77 it/s, ETA 0.0s
+2026-06-27 18:34:09,069 root INFO      Nested step outer=0 inner=0
+2026-06-27 18:34:09,109 __main__ INFO      tqdm[Inner 0] done: 3/3 (100.0%), elapsed 0.1s, 49.42 it/s, ETA 0.0s
+2026-06-27 18:34:09,111 root INFO      Completed outer=0
+2026-06-27 18:34:09,131 root INFO      Nested step outer=1 inner=0
+2026-06-27 18:34:09,172 __main__ INFO      tqdm[Inner 1] done: 3/3 (100.0%), elapsed 0.1s, 49.52 it/s, ETA 0.0s
+2026-06-27 18:34:09,173 root INFO      Completed outer=1
+2026-06-27 18:34:09,174 __main__ INFO      tqdm[Outer] progress: 2/2 (100.0%), elapsed 0.1s, 15.97 it/s, ETA 0.0s
+2026-06-27 18:34:09,175 __main__ INFO      tqdm[Outer] done: 2/2 (100.0%), elapsed 0.1s, 15.97 it/s, ETA 0.0s
+2026-06-27 18:34:09,176 root INFO      from print statement
+2026-06-27 18:34:09,176 root INFO      multiple lines
+2026-06-27 18:34:09,176 root INFO      from print statement 2
+2026-06-27 18:34:09,176 root DEBUG     Single line
+2026-06-27 18:34:09,176 root DEBUG     Multiple lines:
+2026-06-27 18:34:09,176 root DEBUG     next line
+2026-06-27 18:34:09,177 root DEBUG     Another single line
+2026-06-27 18:34:09,177 root DEBUG     Multiple lines:
+2026-06-27 18:34:09,177 root DEBUG     next line
+2026-06-27 18:34:09,177 root DEBUG     next line 2
+2026-06-27 18:34:09,177 root WARNING   Warning message
+2026-06-27 18:34:09,177 root WARNING   with multiple lines
+2026-06-27 18:34:09,177 root WARNING   and should be logged properly.
+2026-06-27 18:34:09,178 root ERROR     Error message
+2026-06-27 18:34:09,178 root ERROR     with multiple lines
+2026-06-27 18:34:09,178 root ERROR     and should be logged properly.
+2026-06-27 18:34:09,178 test_logger2 INFO      Logger2 info message
+2026-06-27 18:34:09,178 test_logger2 INFO      with multiple lines
+2026-06-27 18:34:09,178 test_logger2 INFO      and should be logged properly.
+2026-06-27 18:34:09,209 examples.otherfile INFO      Processing item 0
+2026-06-27 18:34:09,239 examples.otherfile INFO      Processing item 1
+2026-06-27 18:34:09,240 examples.otherfile INFO      tqdm[Processing items] done: 2/2 (100.0%), elapsed 0.1s, 32.88 it/s, ETA 0.0s
+2026-06-27 18:34:09,240 root ERROR     Uncaught exception
+2026-06-27 18:34:09,240 root ERROR     Traceback (most recent call last):
+2026-06-27 18:34:09,240 root ERROR       File "/home/npu-tao/micromamba/envs/hipporag/lib/python3.10/runpy.py", line 196, in _run_module_as_main
+2026-06-27 18:34:09,240 root ERROR         return _run_code(code, main_globals, None,
+2026-06-27 18:34:09,240 root ERROR       File "/home/npu-tao/micromamba/envs/hipporag/lib/python3.10/runpy.py", line 86, in _run_code
+2026-06-27 18:34:09,240 root ERROR         exec(code, run_globals)
+2026-06-27 18:34:09,240 root ERROR       File "/media/npu-tao/disk4T/jason/logging-tee/examples/demo.py", line 63, in <module>
+2026-06-27 18:34:09,240 root ERROR         cause_exception()
+2026-06-27 18:34:09,240 root ERROR       File "/media/npu-tao/disk4T/jason/logging-tee/examples/otherfile.py", line 13, in cause_exception
+2026-06-27 18:34:09,240 root ERROR         raise ValueError("This is an error message\nwith multiple lines\nand should be logged properly.")
+2026-06-27 18:34:09,240 root ERROR     ValueError: This is an error message
+2026-06-27 18:34:09,240 root ERROR     with multiple lines
+2026-06-27 18:34:09,240 root ERROR     and should be logged properly.
 ```
 
 # Contributing
