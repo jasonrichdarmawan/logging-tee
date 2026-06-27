@@ -67,6 +67,19 @@ class TqdmLoggingHandler(MultilineMixin, logging.Handler):
 
 
 class FileHandler(MultilineMixin, logging.FileHandler):
+    def __init__(self, filename, mode="a", encoding=None, delay=False, errors=None):
+        self._initial_mode = mode
+        self._reopen_mode = "a" if mode == "w" else mode
+        self._has_opened = False
+        super().__init__(filename, mode=mode, encoding=encoding, delay=delay, errors=errors)
+        self._has_opened = getattr(self, "stream", None) is not None
+
+    def _open(self):
+        mode = self._initial_mode if not self._has_opened else self._reopen_mode
+        stream = open(self.baseFilename, mode, encoding=self.encoding, errors=self.errors)
+        self._has_opened = True
+        return stream
+
     def emit(self, record):
         try:
             lines = self.iter_formatted_lines(record)

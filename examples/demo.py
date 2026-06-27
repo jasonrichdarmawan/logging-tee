@@ -7,6 +7,7 @@ from logging_tee import setup_logger
 if __name__ == "__main__":
     setup_logger(log_file="output.log", level=logging.DEBUG)
     logger = logging.getLogger()
+    logger2 = logging.getLogger("test_logger2")
 
     for i in tqdm(
         range(2),
@@ -36,4 +37,5 @@ if __name__ == "__main__":
     logger.debug("Multiple lines:\n%s", "next line\nnext line 2")
     logger.warning("Warning message\nwith multiple lines\nand should be logged properly.")
     logger.error("Error message\nwith multiple lines\nand should be logged properly.")
+    logger2.info("Logger2 info message\nwith multiple lines\nand should be logged properly.")
     raise ValueError("This is an error message\nwith multiple lines\nand should be logged properly.")
