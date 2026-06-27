@@ -146,7 +146,7 @@ def _log_tqdm_snapshot(logger, pbar, level=logging.INFO, event="progress"):
     if pbar.disable:
         return
 
-    n = pbar.n
+    n = min(pbar.n, pbar.total) if pbar.total is not None else pbar.n
     total = pbar.total
     elapsed = pbar.format_dict.get("elapsed", 0.0) or 0.0
     rate = pbar.format_dict.get("rate", None)
@@ -155,7 +155,8 @@ def _log_tqdm_snapshot(logger, pbar, level=logging.INFO, event="progress"):
         rate = (n / elapsed) if elapsed > 0 else 0.0
 
     percent = (100.0 * n / total) if total else 0.0
-    remaining = ((total - n) / rate) if (total and rate > 0) else float("inf")
+    remaining_units = max(total - n, 0) if total is not None else None
+    remaining = (remaining_units / rate) if (remaining_units is not None and rate > 0) else float("inf")
     remaining_text = "unknown" if remaining == float("inf") else f"{remaining:.1f}s"
     elapsed_text = f"{elapsed:.1f}s"
 

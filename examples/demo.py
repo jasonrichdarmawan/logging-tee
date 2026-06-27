@@ -10,6 +10,14 @@ if __name__ == "__main__":
     setup_logger(log_file="output.log", level=logging.DEBUG)
     logger = logging.getLogger()
     logger2 = logging.getLogger("test_logger2")
+    
+    total = 17
+    batch_size = 16
+    pbar = tqdm(total=total, desc="Overall Progress")
+    for i in range(0, total, batch_size):
+        time.sleep(0.1)
+        pbar.update(batch_size)
+    pbar.close()
 
     for i in tqdm(
         range(2),

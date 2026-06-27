@@ -135,3 +135,30 @@ def test_demo_style_tqdm_uses_calling_module_logger(tmp_path):
     assert "examples.otherfile INFO      Processing item 0" in contents
     assert "examples.otherfile INFO      Processing item 1" in contents
     assert "examples.otherfile INFO      tqdm[Processing items] done:" in contents
+
+
+def test_tqdm_snapshot_clamps_overshoot_to_total(tmp_path):
+    """
+    If a bar overshoots its total before close, the logged snapshot should still
+    report at most the declared total instead of values above 100%.
+    """
+    log_path = tmp_path / "output.log"
+
+    setup_logger(
+        log_file=str(log_path),
+        level=logging.DEBUG,
+        capture_print=False,
+        capture_uncaught_exceptions=False,
+        auto_log_tqdm=True,
+        tqdm_log_interval_seconds=0,
+    )
+
+    pbar = tqdm(total=17, desc="Overall Progress")
+    pbar.update(16)
+    pbar.update(16)
+    pbar.close()
+
+    contents = _read_text(log_path)
+    assert "tqdm[Overall Progress]" in contents
+    assert "17/17 (100.0%)" in contents
+    assert "32/17" not in contents
