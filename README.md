@@ -72,23 +72,43 @@ is imported or executed.
 
 ## Configure logging from Python
 
+### Basic usage
+
 ```python
+import logging
 from argparse import ArgumentParser
+
+from logging_tee import setup_logger
+
+if __name__ == "__main__":
+    setup_logger(log_file="output.log", level=logging.DEBUG)
+    logger = logging.getLogger()
+
+    logger.info("hello world")
+```
+
+### Advanced usage
+
+```python
 import logging
 from tqdm import tqdm
 import time
+from argparse import ArgumentParser
+
+from logging_tee import setup_logger
 
 from .otherfile import do_something_with_progress, cause_exception
 
 if __name__ == "__main__":
+    setup_logger(log_file="output.log", level=logging.DEBUG)
     logger = logging.getLogger()
     logger2 = logging.getLogger("test_logger2")
 
     parser = ArgumentParser(description="Demonstration of logging_tee features.")
     parser.add_argument("--random-arg", type=str, help="A random argument for demonstration purposes.")
     args = parser.parse_args()
-    print(f"Random argument received: {args.random_arg}")
-
+    logger.info("Random argument received: %s", args.random_arg)
+    
     # demonstrate tqdm pbar
     total = 17
     batch_size = 16
