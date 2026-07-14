@@ -6,9 +6,13 @@ import sys
 import time
 import copy
 import inspect
+import re
 import tqdm.std as tqdm_std
 import tqdm.auto as tqdm_auto
 from tqdm.auto import tqdm
+
+
+_ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 
 
 class MultilineMixin:
@@ -99,10 +103,17 @@ class FileHandler(MultilineMixin, logging.FileHandler):
 
 
 class LineBufferLoggerWriter:
-    def __init__(self, logger, level):
+    def __init__(self, logger, level, stream=None):
         self.logger = logger
         self.level = level
+        self.stream = stream
         self.buffer = ""
+        self._contains_carriage_return = False
+
+    @staticmethod
+    def _visible_text(line):
+        """Remove terminal control sequences before recording redirected output."""
+        return _ANSI_ESCAPE_RE.sub("", line)
 
     def write(self, message):
         """
@@ -112,13 +123,22 @@ class LineBufferLoggerWriter:
         if not message:
             return 0
 
+        if self.stream is not None:
+            self.stream.write(message)
+        self._contains_carriage_return = self._contains_carriage_return or "\r" in message
         self.buffer += message
         while "\n" in self.buffer:
             # Why buffer: `print()`/writers may send partial chunks, and logging partial fragments would create broken lines.
             line, self.buffer = self.buffer.split("\n", 1)
             line = line.rstrip("\r")
-            if line:
-                self.logger.log(self.level, line)
+            visible_line = self._visible_text(line)
+            # tqdm redraws its visual progress bar using carriage returns. Its
+            # structured snapshots are logged separately. Nested bars also emit
+            # ANSI cursor controls (for example, ``\x1b[A``); discard lines
+            # that consist only of these controls.
+            if visible_line and not self._contains_carriage_return:
+                self.logger.log(self.level, visible_line)
+            self._contains_carriage_return = "\r" in self.buffer
         return len(message)
 
     def flush(self):
@@ -129,17 +149,28 @@ class LineBufferLoggerWriter:
         """
         if self.buffer:
             line = self.buffer.rstrip("\r")
-            if line:
-                self.logger.log(self.level, line)
+            visible_line = self._visible_text(line)
+            if visible_line and not self._contains_carriage_return:
+                self.logger.log(self.level, visible_line)
             self.buffer = ""
+            self._contains_carriage_return = False
+
+        if self.stream is not None:
+            self.stream.flush()
 
     def isatty(self):
         """
         Many tools check `stream.isatty()` to decide whether to use terminal UI behaviors (colors, progress animations, carriage returns).
-        Returning `False` tells them "this is not an interactive terminal".
-        That avoids TTY-specific formatting on redirected stdout.
+        stdout remains non-interactive, but stderr delegates to the original
+        terminal so tqdm can keep its normal interactive progress display.
         """
-        return False
+        return self.stream.isatty() if self.stream is not None else False
+
+    def __getattr__(self, name):
+        """Expose stream capabilities such as ``fileno`` and ``encoding``."""
+        if self.stream is not None:
+            return getattr(self.stream, name)
+        raise AttributeError(name)
 
 
 def _log_tqdm_snapshot(logger, pbar, level=logging.INFO, event="progress"):
@@ -271,7 +302,9 @@ def setup_logger(
     log_file,
     name=None,
     level=logging.INFO,
+    file_mode="w",
     capture_print=True,
+    capture_stderr=False,
     capture_uncaught_exceptions=True,
     auto_log_tqdm=True,
     tqdm_log_interval_seconds=1,
@@ -292,7 +325,7 @@ def setup_logger(
     dirname = os.path.dirname(log_file)
     if dirname:
         os.makedirs(dirname, exist_ok=True)
-    file_handler = FileHandler(log_file, mode="w", encoding="utf-8")
+    file_handler = FileHandler(log_file, mode=file_mode, encoding="utf-8")
     file_handler.setLevel(level)
     file_handler.setFormatter(fmt)
     logger.addHandler(file_handler)
@@ -304,6 +337,16 @@ def setup_logger(
     if capture_print:
         # replaces `sys.stdout` with `LineBuferLoggerWriter`, so `print(...)` becomes logger `INFO`
         sys.stdout = LineBufferLoggerWriter(logger=logger, level=logging.INFO)
+
+    if capture_stderr:
+        # Keep logging handlers on sys.__stderr__ to avoid recursion. The writer
+        # mirrors raw stderr there so terminal programs such as tqdm retain their
+        # interactive rendering, while clean non-control lines are also logged.
+        sys.stderr = LineBufferLoggerWriter(
+            logger=logger,
+            level=logging.ERROR,
+            stream=sys.__stderr__,
+        )
 
     if capture_uncaught_exceptions:
         def _excepthook(exc_type, exc_value, exc_traceback):
@@ -320,41 +363,5 @@ def setup_logger(
         tqdm_std.tqdm._auto_assign_position = tqdm_auto_assign_position
 
     return logger
-
-# %%
-
-if __name__ == "__main__":
-    setup_logger(log_file="output.log", level=logging.DEBUG)
-    logger = logging.getLogger(__name__)
-
-    for i in tqdm(
-        range(2),
-        desc="Processing",
-    ):
-        time.sleep(0.03)
-        logger.info("Processing item %d", i)
-
-    for outer_idx in tqdm(
-        range(2),
-        desc="Outer",
-    ):
-        for inner_idx in tqdm(
-            range(3),
-            desc=f"Inner {outer_idx}",
-        ):
-            time.sleep(0.02)
-            if inner_idx % 5 == 0:
-                print(f"Nested step outer={outer_idx} inner={inner_idx}")
-        logger.info(f"Completed outer={outer_idx}")
-
-    print("from print statement")
-    print("multiple lines\nfrom print statement 2")
-    logger.debug("Single line")
-    logger.debug("Multiple lines:\nnext line")
-    logger.debug("Another single line")
-    logger.debug("Multiple lines:\n%s", "next line\nnext line 2")
-    logger.warning("Warning message\nwith multiple lines\nand should be logged properly.")
-    logger.error("Error message\nwith multiple lines\nand should be logged properly.")
-    raise ValueError("This is an error message\nwith multiple lines\nand should be logged properly.")
 
 # %%
