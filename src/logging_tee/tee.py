@@ -4,74 +4,48 @@ import logging
 import os
 import sys
 import time
-import copy
 import inspect
 import re
 import tqdm.std as tqdm_std
 import tqdm.auto as tqdm_auto
 from tqdm.auto import tqdm
 
+from .records import iter_formatted_lines
+
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 
 
-class MultilineMixin:
-    def iter_formatted_lines(self, record):
-        # Picks formatter: self.formatter or a default plain formatter
-        fmt = self.formatter or logging.Formatter("%(message)s")
-        # Copies the record to avoid mutating shared state used by other handlers
-        base_record = copy.copy(record)
-        # If you do not clear exec_info/exc_text before formatting line-by-line, traceback can be appended repeatedly or formatting can look duplicated/inconsistent across handlers.
-        base_record.args = None
-        base_record.exc_info = None
-        base_record.exc_text = None
-        base_record.stack_info = None
-
-        # Splits normal message into lines, formats each line as its own full log record.
-        message_lines = record.getMessage().splitlines() or [record.getMessage()]
-        for line in message_lines:
-            line_record = copy.copy(base_record)
-            line_record.msg = line
-            yield fmt.format(line_record)
-
-        # If exception exists, formats traceback text and emits each traceback line as its own fully formatted log line.
-        if record.exc_info:
-            exc_text = fmt.formatException(record.exc_info)
-            for line in exc_text.splitlines():
-                line_record = copy.copy(base_record)
-                line_record.msg = line
-                yield fmt.format(line_record)
-
-        # Same for stack_info lines.
-        if record.stack_info:
-            stack_text = fmt.formatStack(record.stack_info)
-            for line in stack_text.splitlines():
-                line_record = copy.copy(base_record)
-                line_record.msg = line
-                yield fmt.format(line_record)
-
-
-class TqdmLoggingHandler(MultilineMixin, logging.Handler):
+class TqdmLoggingHandler(logging.Handler):
     def __init__(self, level=logging.NOTSET, stream=None):
         """
         Why `sys.stderr`: Because tqdm and logging are sharing terminal space, `stderr` is the safer channel.
         """
         super().__init__(level)
         self.stream = sys.__stderr__ if stream is None else stream
+        self._terminal_stream = getattr(self.stream, "stream", self.stream)
 
     def emit(self, record):
         """
         Normal `StreamHandler` writes directly to terminal, which can overwrite or break tqdm lines.
-        `TqdmLoggingHandler` uses `tqdm.write(...)`, which is tqdm-aware and prints messages around the bar safely.
+        Clear and redraw bars using their wrapped stderr stream, but write records
+        to the underlying terminal stream to avoid logging the handler's own
+        output recursively.
         """
         try:
-            for line in self.iter_formatted_lines(record):
-                tqdm.write(line, file=self.stream)
+            with tqdm.external_write_mode(file=self.stream):
+                for line in iter_formatted_lines(record, self.formatter):
+                    self._terminal_stream.write(line + "\n")
+                self._terminal_stream.flush()
         except Exception:
             self.handleError(record)
 
+    def filter(self, record):
+        """Keep auto-generated tqdm snapshots in the log file only."""
+        return not getattr(record, "logging_tee_tqdm_snapshot", False)
 
-class FileHandler(MultilineMixin, logging.FileHandler):
+
+class FileHandler(logging.FileHandler):
     def __init__(self, filename, mode="a", encoding=None, delay=False, errors=None):
         self._initial_mode = mode
         self._reopen_mode = "a" if mode == "w" else mode
@@ -87,7 +61,7 @@ class FileHandler(MultilineMixin, logging.FileHandler):
 
     def emit(self, record):
         try:
-            lines = self.iter_formatted_lines(record)
+            lines = iter_formatted_lines(record, self.formatter)
 
             self.acquire()
             try:
@@ -206,6 +180,7 @@ def _log_tqdm_snapshot(logger, pbar, level=logging.INFO, event="progress"):
         rate,
         remaining_text,
         postfix_text,
+        extra={"logging_tee_tqdm_snapshot": True},
     )
 
 
@@ -330,10 +305,6 @@ def setup_logger(
     file_handler.setFormatter(fmt)
     logger.addHandler(file_handler)
 
-    console_handler = TqdmLoggingHandler(level=level, stream=sys.__stderr__)
-    console_handler.setFormatter(fmt)
-    logger.addHandler(console_handler)
-
     if capture_print:
         # replaces `sys.stdout` with `LineBuferLoggerWriter`, so `print(...)` becomes logger `INFO`
         sys.stdout = LineBufferLoggerWriter(logger=logger, level=logging.INFO)
@@ -347,6 +318,13 @@ def setup_logger(
             level=logging.ERROR,
             stream=sys.__stderr__,
         )
+
+    # Use the same stream as tqdm. When stderr is wrapped above, passing the
+    # wrapper to tqdm.write() lets tqdm clear and redraw active bars around log
+    # records, keeping the live display at the bottom of the terminal.
+    console_handler = TqdmLoggingHandler(level=level, stream=sys.stderr)
+    console_handler.setFormatter(fmt)
+    logger.addHandler(console_handler)
 
     if capture_uncaught_exceptions:
         def _excepthook(exc_type, exc_value, exc_traceback):

@@ -1,5 +1,7 @@
 # Features
 
+Supported libraries: [tqdm](https://github.com/tqdm/tqdm), [vLLM](https://github.com/vllm-project/vllm).
+
 Cleanly store tqdm progress bar in human readable format.
 
 ```bash

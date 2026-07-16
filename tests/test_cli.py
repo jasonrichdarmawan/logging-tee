@@ -70,6 +70,134 @@ def test_cli_captures_an_unmodified_python_program(tmp_path):
     assert "standard error" in contents
 
 
+def test_cli_does_not_intercept_a_captured_python_subprocess_stdout(tmp_path):
+    """Protocol output from Python subprocesses must remain available to callers."""
+    script = tmp_path / "parent.py"
+    script.write_text(
+        "import subprocess\nimport sys\n"
+        "result = subprocess.run(\n"
+        "    [sys.executable, '-c', \"import json; print(json.dumps({'ok': True}))\"],\n"
+        "    capture_output=True, text=True, check=True,\n"
+        ")\n"
+        "assert result.stdout == '{\\\"ok\\\": true}\\n', result.stdout\n"
+        "print('captured subprocess output:', result.stdout.strip())\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "logging_tee.cli",
+            "--log-file",
+            "run.log",
+            "python",
+            str(script),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    contents = (tmp_path / "run.log").read_text(encoding="utf-8")
+    assert 'captured subprocess output: {"ok": true}' in contents
+
+
+def test_cli_keeps_subprocess_popen_subclassable(tmp_path):
+    """Libraries such as Ray subclass Popen during their import process."""
+    script = tmp_path / "parent.py"
+    script.write_text(
+        "import subprocess\n"
+        "class ChildPopen(subprocess.Popen):\n"
+        "    pass\n"
+        "assert issubclass(ChildPopen, subprocess.Popen)\n"
+        "print('Popen remains subclassable')\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "logging_tee.cli",
+            "--log-file",
+            "run.log",
+            "python",
+            str(script),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Popen remains subclassable" in (tmp_path / "run.log").read_text(encoding="utf-8")
+
+
+def test_cli_logs_share_tqdm_stderr_stream(tmp_path):
+    """The console handler must use the stream tqdm uses for live bars."""
+    script = tmp_path / "stream.py"
+    script.write_text(
+        "import logging\n"
+        "import sys\n"
+        "from tqdm import tqdm\n"
+        "handler = logging.getLogger().handlers[-1]\n"
+        "assert handler.stream is sys.stderr\n"
+        "for _ in tqdm(range(1), desc='bar'):\n"
+        "    logging.info('while progress is active')\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "logging_tee.cli",
+            "--log-file",
+            "run.log",
+            "python",
+            str(script),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "while progress is active" in (tmp_path / "run.log").read_text(encoding="utf-8")
+
+
+def test_cli_hides_tqdm_snapshots_from_the_terminal(tmp_path):
+    """Live bars belong on the terminal; snapshots belong only in the log file."""
+    script = tmp_path / "progress.py"
+    script.write_text(
+        "from tqdm import tqdm\n"
+        "for _ in tqdm(range(1), desc='bar'):\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "logging_tee.cli",
+            "--log-file",
+            "run.log",
+            "python",
+            str(script),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "tqdm[bar]" in (tmp_path / "run.log").read_text(encoding="utf-8")
+    assert "tqdm[bar]" not in result.stderr
+
+
 def test_cli_preserves_the_child_exit_status(tmp_path):
     script = tmp_path / "failure.py"
     script.write_text("raise SystemExit(7)\n", encoding="utf-8")
@@ -187,4 +315,4 @@ def test_cli_shell_child_detects_an_interactive_terminal(tmp_path):
     )
 
     assert result.returncode == 0
-    assert "True" in result.stderr
+    assert "True" in result.stdout

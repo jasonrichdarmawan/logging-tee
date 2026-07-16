@@ -15,22 +15,7 @@ import textwrap
 import termios
 
 
-_SITECUSTOMIZE = """\
-import logging
-import os
-
-from logging_tee import setup_logger
-
-setup_logger(
-    log_file=os.environ["LOGGING_TEE_LOG_FILE"],
-    level=getattr(logging, os.environ["LOGGING_TEE_LOG_LEVEL"]),
-    file_mode="a",
-    capture_print=True,
-    capture_stderr=True,
-    capture_uncaught_exceptions=True,
-    auto_log_tqdm=True,
-)
-"""
+_SITECUSTOMIZE = "from logging_tee.bootstrap import install_from_environment\ninstall_from_environment()\n"
 
 _FORMATTED_LOG_LINE_RE = re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} ")
 _ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
@@ -107,8 +92,8 @@ def _copy_terminal_size(source_fd, destination_fd):
 def _write_terminal_bytes(terminal_fd, data):
     """Relay terminal-control bytes unchanged, including tqdm cursor updates."""
     if terminal_fd is None:
-        sys.__stderr__.buffer.write(data)
-        sys.__stderr__.buffer.flush()
+        sys.__stdout__.buffer.write(data)
+        sys.__stdout__.buffer.flush()
         return
 
     view = memoryview(data)
@@ -120,10 +105,12 @@ def _write_terminal_bytes(terminal_fd, data):
 def _run_interactive_command(command, environment, log_file):
     """Run a non-Python command on a pseudo-terminal and retain its shell output."""
     master_fd, slave_fd = pty.openpty()
-    try:
-        terminal_fd = os.open("/dev/tty", os.O_WRONLY)
-    except OSError:
-        terminal_fd = None
+    terminal_fd = None
+    if sys.__stdout__.isatty():
+        try:
+            terminal_fd = os.open("/dev/tty", os.O_WRONLY)
+        except OSError:
+            pass
     try:
         if terminal_fd is not None:
             _copy_terminal_size(terminal_fd, slave_fd)
