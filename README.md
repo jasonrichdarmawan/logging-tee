@@ -47,7 +47,7 @@ pip install logging-tee
 After installing the package, launch a Python command through `logging-tee`:
 
 ```bash
-logging-tee python demo.py
+logging-tee python -m examples.demo
 ```
 
 This creates a timestamped log such as `20260714-153045.log` in the current
@@ -59,18 +59,24 @@ Use `--log-file` to choose the destination and `--level` to set the minimum
 stored logging level:
 
 ```bash
-logging-tee --log-file logs/demo.log --level DEBUG python demo.py --option value
+logging-tee --log-file logs/demo.log --level DEBUG python -m examples.demo --random-arg value
 ```
 
 Executable shell scripts are supported too. Shell output is recorded, and any
 Python process the script starts inherits the logging setup:
 
 ```bash
-logging-tee --log-file output_cli.log --level DEBUG ./examples/bash_cli.sh --random-arg test
+logging-tee --log-file output_cli.log --level DEBUG ./examples/demo_bash_cli.sh --random-arg test
 ```
 
 For direct Python commands, the launcher configures logging before the program
 is imported or executed.
+
+`vllm serve` is supported:
+
+```bash
+logging-tee vllm serve Qwen/Qwen3-8B --max-model-len 32768 --reasoning-parser qwen3 --tool-call-parser hermes --enable-auto-tool-choice --api-key local-dev-key --port 8000 --host 0.0.0.0
+```
 
 ## Configure logging from Python
 

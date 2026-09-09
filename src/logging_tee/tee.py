@@ -14,6 +14,28 @@ from .records import iter_formatted_lines
 
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
+_ANSI_RESET = "\x1b[0m"
+_LEVEL_COLORS = {
+    logging.DEBUG: "\x1b[36m",
+    logging.INFO: "\x1b[32m",
+    logging.WARNING: "\x1b[33m",
+    logging.ERROR: "\x1b[31m",
+    logging.CRITICAL: "\x1b[1;31m",
+}
+
+
+class ColorFormatter(logging.Formatter):
+    """Color each field while preserving the plain formatter's layout."""
+
+    def format(self, record):
+        asctime = self.formatTime(record, self.datefmt)
+        level_color = _LEVEL_COLORS.get(record.levelno, "\x1b[37m")
+        return (
+            f"\x1b[90m{asctime}{_ANSI_RESET} "
+            f"\x1b[35m{record.name}{_ANSI_RESET} "
+            f"{level_color}{record.levelname:<9}{_ANSI_RESET} "
+            f"\x1b[37m{record.getMessage()}{_ANSI_RESET}"
+        )
 
 
 class TqdmLoggingHandler(logging.Handler):
@@ -77,10 +99,11 @@ class FileHandler(logging.FileHandler):
 
 
 class LineBufferLoggerWriter:
-    def __init__(self, logger, level, stream=None):
+    def __init__(self, logger, level, stream=None, delegate_stream=None):
         self.logger = logger
         self.level = level
         self.stream = stream
+        self._delegate_stream = stream if delegate_stream is None else delegate_stream
         self.buffer = ""
         self._contains_carriage_return = False
 
@@ -138,12 +161,12 @@ class LineBufferLoggerWriter:
         stdout remains non-interactive, but stderr delegates to the original
         terminal so tqdm can keep its normal interactive progress display.
         """
-        return self.stream.isatty() if self.stream is not None else False
+        return self._delegate_stream.isatty() if self._delegate_stream is not None else False
 
     def __getattr__(self, name):
         """Expose stream capabilities such as ``fileno`` and ``encoding``."""
-        if self.stream is not None:
-            return getattr(self.stream, name)
+        if self._delegate_stream is not None:
+            return getattr(self._delegate_stream, name)
         raise AttributeError(name)
 
 
@@ -307,7 +330,11 @@ def setup_logger(
 
     if capture_print:
         # replaces `sys.stdout` with `LineBuferLoggerWriter`, so `print(...)` becomes logger `INFO`
-        sys.stdout = LineBufferLoggerWriter(logger=logger, level=logging.INFO)
+        sys.stdout = LineBufferLoggerWriter(
+            logger=logger,
+            level=logging.INFO,
+            delegate_stream=sys.__stdout__,
+        )
 
     if capture_stderr:
         # Keep logging handlers on sys.__stderr__ to avoid recursion. The writer
@@ -323,7 +350,9 @@ def setup_logger(
     # wrapper to tqdm.write() lets tqdm clear and redraw active bars around log
     # records, keeping the live display at the bottom of the terminal.
     console_handler = TqdmLoggingHandler(level=level, stream=sys.stderr)
-    console_handler.setFormatter(fmt)
+    terminal_stream = console_handler._terminal_stream
+    use_color = os.environ.get("NO_COLOR") is None and getattr(terminal_stream, "isatty", lambda: False)()
+    console_handler.setFormatter(ColorFormatter() if use_color else fmt)
     logger.addHandler(console_handler)
 
     if capture_uncaught_exceptions:
