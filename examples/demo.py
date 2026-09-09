@@ -5,7 +5,7 @@ from argparse import ArgumentParser
 
 from logging_tee import setup_logger
 
-from .otherfile import do_something_with_progress, cause_exception
+from .otherfile import get_yield, do_something_with_progress, cause_exception
 
 if __name__ == "__main__":
     setup_logger(log_file="output.log", level=logging.DEBUG)
@@ -36,6 +36,10 @@ if __name__ == "__main__":
             "additional_info": f"{additional_info}",
             "more_info": f"{additional_info * 2}",
         })
+    
+    for batch_idx in tqdm(get_yield(), desc="Yielding Progress"):
+        time.sleep(2)
+        logger.info("Processing batch %d", batch_idx)
 
     # demonstrate nested tqdm pbar
     for i in tqdm(

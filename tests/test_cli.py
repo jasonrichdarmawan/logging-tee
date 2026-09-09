@@ -2,7 +2,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from logging_tee.tee import LineBufferLoggerWriter
+from logging_tee.tee import ColorFormatter, LineBufferLoggerWriter, TqdmLoggingHandler
 
 
 class _InteractiveStream:
@@ -21,6 +21,35 @@ class _InteractiveStream:
         return True
 
 
+def test_color_formatter_colors_fields_and_level_by_severity():
+    logging = __import__("logging")
+    formatter = ColorFormatter()
+    info = logging.LogRecord("worker", logging.INFO, "", 0, "ready", (), None)
+    error = logging.LogRecord("worker", logging.ERROR, "", 0, "failed", (), None)
+
+    info_text = formatter.format(info)
+    error_text = formatter.format(error)
+
+    assert "\x1b[90m" in info_text
+    assert "\x1b[35mworker\x1b[0m" in info_text
+    assert "\x1b[32mINFO" in info_text
+    assert "\x1b[37mready\x1b[0m" in info_text
+    assert "\x1b[31mERROR" in error_text
+
+
+def test_tqdm_handler_writes_colored_records_to_interactive_terminal():
+    logging = __import__("logging")
+    terminal = _InteractiveStream()
+    handler = TqdmLoggingHandler(stream=terminal)
+    handler.setFormatter(ColorFormatter())
+
+    handler.emit(logging.LogRecord("worker", logging.WARNING, "", 0, "careful", (), None))
+
+    output = "".join(terminal.writes)
+    assert "\x1b[33mWARNING" in output
+    assert "\x1b[37mcareful\x1b[0m" in output
+
+
 def test_stderr_writer_mirrors_raw_tqdm_output_to_the_terminal():
     terminal = _InteractiveStream()
     writer = LineBufferLoggerWriter(
@@ -36,6 +65,23 @@ def test_stderr_writer_mirrors_raw_tqdm_output_to_the_terminal():
     assert terminal.was_flushed
     assert writer.isatty()
     assert writer.encoding == "utf-8"
+
+
+def test_writer_delegates_stream_capabilities_without_mirroring_output():
+    terminal = _InteractiveStream()
+    terminal.fileno = lambda: 42
+    writer = LineBufferLoggerWriter(
+        logger=__import__("logging").getLogger("test-stdout-tee"),
+        level=__import__("logging").INFO,
+        delegate_stream=terminal,
+    )
+
+    writer.write("captured output\n")
+
+    assert terminal.writes == []
+    assert writer.fileno() == 42
+    assert writer.encoding == "utf-8"
+    assert writer.isatty()
 
 
 def test_cli_captures_an_unmodified_python_program(tmp_path):
@@ -68,6 +114,43 @@ def test_cli_captures_an_unmodified_python_program(tmp_path):
     assert "standard output" in contents
     assert "standard logging" in contents
     assert "standard error" in contents
+
+
+def test_cli_stdout_supports_fileno_for_vllm_style_fd_redirection(tmp_path):
+    """vLLM temporarily redirects the stdout file descriptor while starting workers."""
+    script = tmp_path / "fileno.py"
+    script.write_text(
+        "import os\n"
+        "import sys\n"
+        "stdout_fd = sys.stdout.fileno()\n"
+        "saved_fd = os.dup(stdout_fd)\n"
+        "try:\n"
+        "    with open(os.devnull, 'w') as devnull:\n"
+        "        os.dup2(devnull.fileno(), stdout_fd)\n"
+        "finally:\n"
+        "    os.dup2(saved_fd, stdout_fd)\n"
+        "    os.close(saved_fd)\n"
+        "print('stdout fileno works')\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "logging_tee.cli",
+            "--log-file",
+            "run.log",
+            "python",
+            str(script),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "stdout fileno works" in (tmp_path / "run.log").read_text(encoding="utf-8")
 
 
 def test_cli_does_not_intercept_a_captured_python_subprocess_stdout(tmp_path):
