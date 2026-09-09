@@ -6,6 +6,7 @@ import sys
 import time
 import inspect
 import re
+import threading
 import tqdm.std as tqdm_std
 import tqdm.auto as tqdm_auto
 from tqdm.auto import tqdm
@@ -22,6 +23,26 @@ _LEVEL_COLORS = {
     logging.ERROR: "\x1b[31m",
     logging.CRITICAL: "\x1b[1;31m",
 }
+_stream_handler_state = threading.local()
+
+
+def _install_stream_handler_context():
+    """Expose the LogRecord currently being rendered by standard stream handlers."""
+    if getattr(logging.StreamHandler.emit, "_logging_tee_wrapped", False):
+        return
+
+    original_emit = logging.StreamHandler.emit
+
+    def emit(handler, record):
+        previous_record = getattr(_stream_handler_state, "record", None)
+        _stream_handler_state.record = record
+        try:
+            return original_emit(handler, record)
+        finally:
+            _stream_handler_state.record = previous_record
+
+    emit._logging_tee_wrapped = True
+    logging.StreamHandler.emit = emit
 
 
 class ColorFormatter(logging.Formatter):
@@ -54,6 +75,8 @@ class TqdmLoggingHandler(logging.Handler):
         to the underlying terminal stream to avoid logging the handler's own
         output recursively.
         """
+        if getattr(record, "_logging_tee_skip_handlers", False):
+            return
         try:
             with tqdm.external_write_mode(file=self.stream):
                 for line in iter_formatted_lines(record, self.formatter):
@@ -82,6 +105,8 @@ class FileHandler(logging.FileHandler):
         return stream
 
     def emit(self, record):
+        if getattr(record, "_logging_tee_skip_handlers", False):
+            return
         try:
             lines = iter_formatted_lines(record, self.formatter)
 
@@ -99,11 +124,12 @@ class FileHandler(logging.FileHandler):
 
 
 class LineBufferLoggerWriter:
-    def __init__(self, logger, level, stream=None, delegate_stream=None):
+    def __init__(self, logger, level, stream=None, delegate_stream=None, record_handler=None):
         self.logger = logger
         self.level = level
         self.stream = stream
         self._delegate_stream = stream if delegate_stream is None else delegate_stream
+        self._record_handler = record_handler
         self.buffer = ""
         self._contains_carriage_return = False
 
@@ -119,6 +145,14 @@ class LineBufferLoggerWriter:
         """
         if not message:
             return 0
+
+        record = getattr(_stream_handler_state, "record", None)
+        if record is not None and self._record_handler is not None:
+            if not getattr(record, "_logging_tee_stream_captured", False):
+                record._logging_tee_stream_captured = True
+                record._logging_tee_skip_handlers = True
+                self._record_handler(record)
+            return len(message)
 
         if self.stream is not None:
             self.stream.write(message)
@@ -309,6 +343,7 @@ def setup_logger(
     tqdm_auto_assign_position=True,
 ):
     logger = logging.getLogger(name)
+    _install_stream_handler_context()
     logger.setLevel(level)
     # Useful when setup code runs multiple times, otherwise handlers stack and the same
     # log can print/write multiple times.
@@ -328,12 +363,22 @@ def setup_logger(
     file_handler.setFormatter(fmt)
     logger.addHandler(file_handler)
 
+    capture_handlers = [file_handler]
+
+    def _handle_stream_record(record):
+        record_copy = logging.makeLogRecord(record.__dict__.copy())
+        record_copy._logging_tee_skip_handlers = False
+        for handler in capture_handlers:
+            if record_copy.levelno >= handler.level:
+                handler.handle(record_copy)
+
     if capture_print:
         # replaces `sys.stdout` with `LineBuferLoggerWriter`, so `print(...)` becomes logger `INFO`
         sys.stdout = LineBufferLoggerWriter(
             logger=logger,
             level=logging.INFO,
             delegate_stream=sys.__stdout__,
+            record_handler=_handle_stream_record,
         )
 
     if capture_stderr:
@@ -344,6 +389,7 @@ def setup_logger(
             logger=logger,
             level=logging.ERROR,
             stream=sys.__stderr__,
+            record_handler=_handle_stream_record,
         )
 
     # Use the same stream as tqdm. When stderr is wrapped above, passing the
@@ -354,6 +400,7 @@ def setup_logger(
     use_color = os.environ.get("NO_COLOR") is None and getattr(terminal_stream, "isatty", lambda: False)()
     console_handler.setFormatter(ColorFormatter() if use_color else fmt)
     logger.addHandler(console_handler)
+    capture_handlers.append(console_handler)
 
     if capture_uncaught_exceptions:
         def _excepthook(exc_type, exc_value, exc_traceback):
