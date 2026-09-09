@@ -116,6 +116,49 @@ def test_cli_captures_an_unmodified_python_program(tmp_path):
     assert "standard error" in contents
 
 
+def test_cli_preserves_third_party_stream_handler_records(tmp_path):
+    """Formatted library stderr records retain their logger name and severity."""
+    script = tmp_path / "library_logging.py"
+    script.write_text(
+        "import logging\n"
+        "import sys\n"
+        "logger = logging.getLogger('ContinuousBatchingLogger')\n"
+        "logger.setLevel(logging.INFO)\n"
+        "logger.propagate = False\n"
+        "handler = logging.StreamHandler(sys.stderr)\n"
+        "handler.setFormatter(logging.Formatter(\n"
+        "    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'\n"
+        "))\n"
+        "logger.addHandler(handler)\n"
+        "logger.info('cache initialized')\n"
+        "logger.warning('warming up')\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "logging_tee.cli",
+            "--log-file",
+            "run.log",
+            "python",
+            str(script),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    contents = (tmp_path / "run.log").read_text(encoding="utf-8")
+    assert "ContinuousBatchingLogger INFO      cache initialized" in contents
+    assert "ContinuousBatchingLogger WARNING   warming up" in contents
+    assert "root ERROR" not in contents
+    assert contents.count("cache initialized") == 1
+    assert contents.count("warming up") == 1
+
+
 def test_cli_stdout_supports_fileno_for_vllm_style_fd_redirection(tmp_path):
     """vLLM temporarily redirects the stdout file descriptor while starting workers."""
     script = tmp_path / "fileno.py"
