@@ -32,10 +32,16 @@ def _parser():
     parser = argparse.ArgumentParser(
         description="Run a Python command while teeing stdout, stderr, logging, and tqdm snapshots to a log file."
     )
-    parser.add_argument(
+    destination = parser.add_mutually_exclusive_group()
+    destination.add_argument(
         "--log-file",
         type=Path,
         help="Log destination (default: YYYYMMDD-HHMMSS.log in the current directory).",
+    )
+    destination.add_argument(
+        "--log-dir",
+        type=Path,
+        help="Directory for a YYYYMMDD-HHMMSS.log file.",
     )
     parser.add_argument(
         "--level",
@@ -181,7 +187,7 @@ def main(argv=None):
     if not command:
         _parser().error("a command is required; for example: logging-tee python demo.py")
 
-    log_file = args.log_file or Path.cwd() / f"{datetime.now():%Y%m%d-%H%M%S}.log"
+    log_file = args.log_file or (args.log_dir or Path.cwd()) / f"{datetime.now():%Y%m%d-%H%M%S}.log"
     log_file = log_file.expanduser().resolve()
     log_file.parent.mkdir(parents=True, exist_ok=True)
     # Truncate once before the shell wrapper can emit output. The Python startup

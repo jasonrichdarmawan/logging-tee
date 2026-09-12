@@ -1,6 +1,7 @@
+from pathlib import Path
+import re
 import subprocess
 import sys
-from pathlib import Path
 
 from logging_tee.tee import ColorFormatter, LineBufferLoggerWriter, TqdmLoggingHandler
 
@@ -114,6 +115,32 @@ def test_cli_captures_an_unmodified_python_program(tmp_path):
     assert "standard output" in contents
     assert "standard logging" in contents
     assert "standard error" in contents
+
+
+def test_cli_writes_timestamped_log_to_requested_directory(tmp_path):
+    log_dir = tmp_path / "nested" / "logs"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "logging_tee.cli",
+            "--log-dir",
+            str(log_dir),
+            "python",
+            "-c",
+            "print('timestamped output')",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    logs = list(log_dir.glob("*.log"))
+    assert len(logs) == 1
+    assert re.fullmatch(r"\d{8}-\d{6}\.log", logs[0].name)
+    assert "timestamped output" in logs[0].read_text(encoding="utf-8")
 
 
 def test_cli_preserves_third_party_stream_handler_records(tmp_path):

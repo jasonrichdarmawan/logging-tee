@@ -62,6 +62,15 @@ stored logging level:
 logging-tee --log-file logs/demo.log --level DEBUG python -m examples.demo --random-arg value
 ```
 
+Use `--log-dir` to choose the directory while retaining the timestamped
+`YYYYMMDD-HHMMSS.log` filename:
+
+```bash
+logging-tee --log-dir logs python -m examples.demo
+```
+
+`--log-file` and `--log-dir` are mutually exclusive.
+
 Executable shell scripts are supported too. Shell output is recorded, and any
 Python process the script starts inherits the logging setup:
 
